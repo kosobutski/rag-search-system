@@ -1,0 +1,107 @@
+import type { Paragraph } from "./clean.ts";
+
+export type Chunk = {
+    id: string;
+    docId: string;
+    section: string | null;
+    clause: string | null;
+    page: number;
+    text: string;
+};
+
+const MAX_CHUNK_LENGTH = 1500;
+
+// "4.2." / "4.2.1" — пункт; "4." — раздел или пункт верхнего уровня.
+// Части номера не начинаются с нуля, чтобы время "8.00" не считалось пунктом.
+const CLAUSE_RE = /^(\d{1,2}(?:\.[1-9]\d?){1,3})\.?\s/;
+const TOP_LEVEL_RE = /^(\d{1,2})\.\s/;
+// Заголовок без точки после номера: "1 ОБЛАСТЬ ПРИМЕНЕНИЯ"
+const HEADING_NO_DOT_RE = /^\d{1,2}\s+[А-ЯЁ]/;
+
+const isUpperCase = (text: string): boolean => {
+    const letters = text.replace(/[^а-яёa-z]/gi, "");
+    const upper = letters.replace(/[^А-ЯЁA-Z]/g, "");
+    return letters.length > 0 && upper.length / letters.length > 0.7;
+};
+
+// Короткая строка без точки в конце: "4. ПРОМЕЖУТОЧНАЯ АТТЕСТАЦИЯ", "2. Возникновение отношений",
+// "1 ОБЛАСТЬ ПРИМЕНЕНИЯ" — заголовок раздела
+const isSectionHeading = (text: string): boolean =>
+    text.length <= 150 &&
+    !/[.;:,]$/.test(text) &&
+    (TOP_LEVEL_RE.test(text) || (HEADING_NO_DOT_RE.test(text) && isUpperCase(text)));
+
+// Делит слишком длинный текст по абзацам, а слишком длинные абзацы — по предложениям
+const splitLongText = (paragraphs: string[]): string[] => {
+    const pieces = paragraphs.flatMap((p) =>
+        p.length <= MAX_CHUNK_LENGTH ? [p] : (p.match(/[^.!?]+[.!?]+\s*|[^.!?]+$/g) ?? [p]),
+    );
+
+    const parts: string[] = [];
+    let current = "";
+    for (const piece of pieces) {
+        if (current && current.length + piece.length > MAX_CHUNK_LENGTH) {
+            parts.push(current.trim());
+            current = "";
+        }
+        current += (current ? "\n" : "") + piece;
+    }
+    if (current.trim()) {
+        parts.push(current.trim());
+    }
+    return parts;
+};
+
+type Draft = {
+    section: string | null;
+    clause: string | null;
+    page: number;
+    paragraphs: string[];
+};
+
+export const chunkDocument = (docId: string, paragraphs: Paragraph[]): Chunk[] => {
+    const chunks: Chunk[] = [];
+    let section: string | null = null;
+    let draft: Draft | null = null;
+
+    const flush = () => {
+        if (!draft) {
+            return;
+        }
+        const current = draft;
+        const parts = splitLongText(current.paragraphs);
+        parts.forEach((text, i) => {
+            const suffix = parts.length > 1 ? `-part${i + 1}` : "";
+            chunks.push({
+                id: `${docId}#${current.clause ?? `s${chunks.length}`}${suffix}`,
+                docId,
+                section: current.section,
+                clause: current.clause,
+                page: current.page,
+                text,
+            });
+        });
+        draft = null;
+    };
+
+    for (const { text, page } of paragraphs) {
+        if (isSectionHeading(text)) {
+            flush();
+            section = text;
+            continue;
+        }
+
+        const clause = text.match(CLAUSE_RE)?.[1] ?? text.match(TOP_LEVEL_RE)?.[1] ?? null;
+        if (clause) {
+            flush();
+            draft = { section, clause, page, paragraphs: [text] };
+        } else if (draft) {
+            draft.paragraphs.push(text);
+        } else {
+            draft = { section, clause: null, page, paragraphs: [text] };
+        }
+    }
+    flush();
+
+    return chunks;
+};

@@ -7,6 +7,8 @@
     "check": "tsx src/scripts/check.ts",
     "check:prod": "node dist/scripts/check.js",
     "typecheck": "tsc --noEmit",
+    "extract": "tsx src/scripts/extract.ts",
+    "chunk": "tsx src/scripts/chunk.ts",
     "prebuild": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "tsc",
     "db:up": "docker compose up -d",
