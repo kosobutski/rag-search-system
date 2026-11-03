@@ -6,6 +6,7 @@ const envSchema = z.object({
     EMBEDDING_MODEL: z.string().min(1),
     LLM_MODEL: z.string().min(1),
     QDRANT_URL: z.url(),
+    QDRANT_COLLECTION: z.string().min(1).default("guap_docs"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -27,5 +28,6 @@ export const config = {
     },
     qdrant: {
         url: env.QDRANT_URL,
+        collection: env.QDRANT_COLLECTION,
     },
 } as const;
