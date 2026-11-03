@@ -32,31 +32,35 @@ const isSectionHeading = (text: string): boolean =>
     (TOP_LEVEL_RE.test(text) || (HEADING_NO_DOT_RE.test(text) && isUpperCase(text)));
 
 // Делит слишком длинный текст по абзацам, а слишком длинные абзацы — по предложениям
-const splitLongText = (paragraphs: string[]): string[] => {
+// Каждая часть получает страницу своего первого абзаца
+const splitLongText = (paragraphs: Paragraph[]): Paragraph[] => {
     const pieces = paragraphs.flatMap((p) =>
-        p.length <= MAX_CHUNK_LENGTH ? [p] : (p.match(/[^.!?]+[.!?]+\s*|[^.!?]+$/g) ?? [p]),
+        p.text.length <= MAX_CHUNK_LENGTH
+            ? [p]
+            : (p.text.match(/[^.!?]+[.!?]+\s*|[^.!?]+$/g) ?? [p.text]).map((text) => ({ text, page: p.page })),
     );
 
-    const parts: string[] = [];
-    let current = "";
+    const parts: Paragraph[] = [];
+    let current: Paragraph | null = null;
     for (const piece of pieces) {
-        if (current && current.length + piece.length > MAX_CHUNK_LENGTH) {
-            parts.push(current.trim());
-            current = "";
+        if (current && current.text.length + piece.text.length > MAX_CHUNK_LENGTH) {
+            parts.push(current);
+            current = null;
         }
-        current += (current ? "\n" : "") + piece;
+        current = current ? { text: current.text + "\n" + piece.text, page: current.page } : { ...piece };
     }
-    if (current.trim()) {
-        parts.push(current.trim());
+    if (current) {
+        parts.push(current);
     }
-    return parts;
+    return parts
+        .map((part) => ({ text: part.text.trim(), page: part.page }))
+        .filter((part) => part.text.length > 0);
 };
 
 type Draft = {
     section: string | null;
     clause: string | null;
-    page: number;
-    paragraphs: string[];
+    paragraphs: Paragraph[];
 };
 
 export const chunkDocument = (docId: string, paragraphs: Paragraph[]): Chunk[] => {
@@ -70,21 +74,22 @@ export const chunkDocument = (docId: string, paragraphs: Paragraph[]): Chunk[] =
         }
         const current = draft;
         const parts = splitLongText(current.paragraphs);
-        parts.forEach((text, i) => {
+        parts.forEach(({ text, page }, i) => {
             const suffix = parts.length > 1 ? `-part${i + 1}` : "";
             chunks.push({
                 id: `${docId}#${current.clause ?? `s${chunks.length}`}${suffix}`,
                 docId,
                 section: current.section,
                 clause: current.clause,
-                page: current.page,
+                page,
                 text,
             });
         });
         draft = null;
     };
 
-    for (const { text, page } of paragraphs) {
+    for (const paragraph of paragraphs) {
+        const { text } = paragraph;
         if (isSectionHeading(text)) {
             flush();
             section = text;
@@ -94,11 +99,11 @@ export const chunkDocument = (docId: string, paragraphs: Paragraph[]): Chunk[] =
         const clause = text.match(CLAUSE_RE)?.[1] ?? text.match(TOP_LEVEL_RE)?.[1] ?? null;
         if (clause) {
             flush();
-            draft = { section, clause, page, paragraphs: [text] };
+            draft = { section, clause, paragraphs: [paragraph] };
         } else if (draft) {
-            draft.paragraphs.push(text);
+            draft.paragraphs.push(paragraph);
         } else {
-            draft = { section, clause: null, page, paragraphs: [text] };
+            draft = { section, clause: null, paragraphs: [paragraph] };
         }
     }
     flush();
