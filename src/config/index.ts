@@ -7,6 +7,7 @@ const envSchema = z.object({
     LLM_MODEL: z.string().min(1),
     QDRANT_URL: z.url(),
     QDRANT_COLLECTION: z.string().min(1).default("guap_docs"),
+    PORT: z.coerce.number().int().positive().default(3000),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -29,5 +30,8 @@ export const config = {
     qdrant: {
         url: env.QDRANT_URL,
         collection: env.QDRANT_COLLECTION,
+    },
+    server: {
+        port: env.PORT,
     },
 } as const;
