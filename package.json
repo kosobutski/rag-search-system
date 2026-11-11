@@ -11,6 +11,7 @@
     "chunk": "tsx src/scripts/chunk.ts",
     "ingest": "tsx src/scripts/ingest.ts",
     "search": "tsx src/scripts/search.ts",
+    "ask": "tsx src/scripts/ask.ts",
     "prebuild": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "tsc",
     "db:up": "docker compose up -d",
